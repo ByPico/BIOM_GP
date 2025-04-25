@@ -477,107 +477,6 @@ class FacialLandmarkExtractor:
         return np.array(X), np.array(y), file_paths
 
 
-class AgeFeatureExtractor:
-    """
-    A class for extracting age-related features from facial images.
-    This is a simplified implementation for demonstration purposes.
-    """
-    
-    def __init__(self, age_model_path=None):
-        """
-        Initialize the age feature extractor.
-        
-        Parameters:
-        - age_model_path (str, optional): Path to a pre-trained age estimation model.
-                                        If None, a simple heuristic approach is used.
-        """
-        self.model = None
-        if age_model_path and os.path.exists(age_model_path):
-            # Load pre-trained model (implementation depends on model type)
-            pass
-        
-    def extract_age_features(self, image_path):
-        """
-        Extract age-related features from a facial image.
-        This implementation uses simple image processing techniques as a proxy for age features.
-        
-        Parameters:
-        - image_path (str): Path to the facial image.
-        
-        Returns:
-        - np.array: Age-related features or None if face detection fails.
-        """
-        # Load and preprocess image
-        img = cv2.imread(image_path)
-        if img is None:
-            return None
-        
-        # Convert to grayscale
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        # Apply Gaussian blur to reduce noise
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        
-        # Use edge detection as a proxy for wrinkles (more edges may indicate more wrinkles)
-        edges = cv2.Canny(blurred, 50, 150)
-        
-        # Calculate the percentage of edge pixels as a feature
-        edge_percentage = np.sum(edges > 0) / (edges.shape[0] * edges.shape[1])
-        
-        # Calculate texture features using Local Binary Patterns (LBP) or Gabor filters
-        # This is simplified here - just using basic histogram of image intensity
-        hist = cv2.calcHist([gray], [0], None, [32], [0, 256])
-        hist = hist.flatten() / np.sum(hist)  # Normalize
-        
-        # Combine features
-        features = np.append(edge_percentage, hist)
-        
-        return features
-    
-    def extract_age_features_from_directory(self, directory_path):
-        """
-        Extract age-related features from all images in a directory.
-        
-        Parameters:
-        - directory_path (str): Path to the directory containing images.
-        
-        Returns:
-        - X (np.array): Array of age-related features for all images.
-        - y (np.array): Array of identity labels (based on subdirectory names).
-        - file_paths (list): List of file paths corresponding to the extracted features.
-        """
-        X = []
-        y = []
-        file_paths = []
-        
-        # Get all subdirectories (assuming each subdirectory represents a person)
-        person_dirs = [d for d in os.listdir(directory_path) if os.path.isdir(os.path.join(directory_path, d))]
-        
-        print(f"Found {len(person_dirs)} person directories for age feature extraction")
-        
-        # Iterate through each person's directory
-        for person_id, person_dir in enumerate(tqdm(person_dirs, desc="Processing directories for age features")):
-            person_path = os.path.join(directory_path, person_dir)
-            
-            # Get all image files in the person's directory
-            image_files = glob.glob(os.path.join(person_path, "*.jpg")) + \
-                          glob.glob(os.path.join(person_path, "*.jpeg")) + \
-                          glob.glob(os.path.join(person_path, "*.png"))
-            
-            # Process each image
-            for image_file in tqdm(image_files, desc=f"Age features for {person_dir}"):
-                features = self.extract_age_features(image_file)
-                if features is not None:
-                    X.append(features)
-                    y.append(person_id)
-                    file_paths.append(image_file)
-        
-        if len(X) == 0:
-            raise ValueError("No features could be extracted from the images!")
-            
-        return np.array(X), np.array(y), file_paths
-
-
 def extract_landmark_distance_features(raw_data):
     """
     Extract features from facial landmarks using Manhattan distances
@@ -674,7 +573,7 @@ def normalize_features(features):
 
 class BiometricFusion:
     """
-    Class for implementing different fusion strategies in biometric systems.
+    Class for implementing feature-level fusion in biometric systems.
     """
     
     @staticmethod
@@ -701,80 +600,9 @@ class BiometricFusion:
         fused_features = np.hstack(normalized_features)
         
         return fused_features
-    
-    @staticmethod
-    def score_level_fusion(score_sets, weights=None):
-        """
-        Implement score-level fusion by combining matching scores from different modalities.
-        
-        Parameters:
-        score_sets: List of score arrays to fuse
-        weights: List of weights for each score set (default: equal weights)
-        
-        Returns:
-        fused_scores: Combined scores
-        """
-        num_sets = len(score_sets)
-        
-        # If weights are not provided, use equal weights
-        if weights is None:
-            weights = np.ones(num_sets) / num_sets
-        else:
-            # Normalize weights to sum to 1
-            weights = np.array(weights) / np.sum(weights)
-        
-        # Normalize each score set to [0,1] range
-        normalized_scores = []
-        for scores in score_sets:
-            min_score = np.min(scores)
-            max_score = np.max(scores)
-            if max_score > min_score:
-                norm_scores = (scores - min_score) / (max_score - min_score)
-            else:
-                norm_scores = np.zeros_like(scores)
-            normalized_scores.append(norm_scores)
-        
-        # Weighted sum fusion
-        fused_scores = np.zeros_like(normalized_scores[0])
-        for i, scores in enumerate(normalized_scores):
-            fused_scores += weights[i] * scores
-        
-        return fused_scores
-    
-    @staticmethod
-    def decision_level_fusion(decisions, fusion_method='majority_vote'):
-        """
-        Implement decision-level fusion by combining binary decisions from different modalities.
-        
-        Parameters:
-        decisions: List of binary decision arrays (1 for accept, 0 for reject)
-        fusion_method: Method to use for fusion ('majority_vote', 'AND', 'OR')
-        
-        Returns:
-        fused_decisions: Combined binary decisions
-        """
-        decisions = np.array(decisions)
-        
-        if fusion_method == 'majority_vote':
-            # Sum decisions across modalities and apply threshold
-            decision_sum = np.sum(decisions, axis=0)
-            fused_decisions = (decision_sum >= np.ceil(len(decisions) / 2)).astype(int)
-        
-        elif fusion_method == 'AND':
-            # Accept only if all modalities accept
-            fused_decisions = np.all(decisions, axis=0).astype(int)
-        
-        elif fusion_method == 'OR':
-            # Accept if any modality accepts
-            fused_decisions = np.any(decisions, axis=0).astype(int)
-        
-        else:
-            raise ValueError(f"Unknown fusion method: {fusion_method}")
-        
-        return fused_decisions
 
 
-def run_landmark_experiment(image_folder, predictor_path, landmark_config, config_name, age_based=False):
+def run_landmark_experiment(image_folder, predictor_path, landmark_config, config_name):
     """
     Run facial recognition experiment with a specific landmark configuration.
     
@@ -783,7 +611,6 @@ def run_landmark_experiment(image_folder, predictor_path, landmark_config, confi
     - predictor_path (str): Path to the dlib shape predictor model
     - landmark_config (list): List of landmark indices to use
     - config_name (str): Name of the configuration for plotting
-    - age_based (bool): Whether to include age-based features in fusion
     
     Returns:
     - dict: Dictionary containing experiment results
@@ -806,19 +633,6 @@ def run_landmark_experiment(image_folder, predictor_path, landmark_config, confi
     
     # Initialize feature sets for fusion
     feature_sets = [X_distances, X_ratios]
-    
-    # If age-based features are requested, extract them
-    if age_based:
-        print("Extracting age-based features...")
-        age_extractor = AgeFeatureExtractor()
-        X_age, y_age, _ = age_extractor.extract_age_features_from_directory(image_folder)
-        
-        # Ensure we have age features for the same images as landmark features
-        # This assumes file_paths are in the same order for both feature extraction methods
-        if len(X_age) == len(X_distances):
-            feature_sets.append(X_age)
-        else:
-            print("Warning: Age features could not be matched with landmark features. Skipping fusion.")
     
     # Perform feature-level fusion
     print("Performing feature-level fusion...")
@@ -888,10 +702,10 @@ def run_landmark_experiment(image_folder, predictor_path, landmark_config, confi
     for i, sample in enumerate(X_fused_test):
         true_class = y_fused_test[i]
         sample_reshaped = sample.reshape(1, -1)
-        probabilities = svm.predict_proba(sample_reshaped)[0]
+        probabilities = knn.predict_proba(sample_reshaped)[0]
         
         # Find the probability for the true class
-        class_indices = svm.classes_
+        class_indices = knn.classes_
         true_class_idx = np.where(class_indices == true_class)[0]
         
         if len(true_class_idx) > 0:
@@ -982,7 +796,7 @@ def main():
             predictor_path=predictor_path,
             landmark_config=landmark_indices,
             config_name=config_name,
-            age_based=(config_name == "full_face")  # Only use age features for full face
+              # Only use age features for full face
         )
         all_results[config_name] = results
     
